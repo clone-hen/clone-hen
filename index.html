@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ChatApp - Premium Messaging</title>
+    <link rel="stylesheet" href="style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+<body>
+    <div class="app-background"></div>
+    <div class="app-container">
+        <!-- Sidebar -->
+        <aside class="sidebar">
+            <header class="sidebar-header">
+                <div class="user-profile">
+                    <img src="https://ui-avatars.com/api/?name=You&background=0D8ABC&color=fff&rounded=true" alt="Your Profile" class="avatar">
+                    <span class="user-name">You</span>
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn" title="Status"><i class="fas fa-circle-notch"></i></button>
+                    <button class="icon-btn" title="New Chat" id="new-chat-btn"><i class="fas fa-comment-alt"></i></button>
+                    <button class="icon-btn" title="Menu"><i class="fas fa-ellipsis-v"></i></button>
+                </div>
+            </header>
+            
+            <div class="search-container">
+                <div class="search-bar">
+                    <i class="fas fa-search"></i>
+                    <input type="text" placeholder="Search or start new chat">
+                </div>
+            </div>
+
+            <div class="chat-list" id="chat-list">
+                <!-- Chat items will be injected by JS -->
+            </div>
+        </aside>
+
+        <!-- Main Chat Area -->
+        <main class="chat-area">
+            <header class="chat-header">
+                <div class="chat-header-info">
+                    <img src="https://ui-avatars.com/api/?name=Alice&background=FF6B6B&color=fff&rounded=true" alt="Alice" class="avatar" id="current-chat-avatar">
+                    <div class="chat-header-text">
+                        <h2 id="current-chat-name">Alice Smith</h2>
+                        <span class="online-status">Online</span>
+                    </div>
+                </div>
+                <div class="header-actions">
+                    <button class="icon-btn" title="Video Call" id="video-call-btn"><i class="fas fa-video"></i></button>
+                    <button class="icon-btn" title="Voice Call"><i class="fas fa-phone-alt"></i></button>
+                    <button class="icon-btn" title="Search"><i class="fas fa-search"></i></button>
+                    <button class="icon-btn" title="Menu"><i class="fas fa-ellipsis-v"></i></button>
+                </div>
+            </header>
+
+            <div class="messages-container" id="messages-container">
+                <!-- Messages will be injected by JS -->
+            </div>
+
+            <footer class="chat-input-area">
+                <button class="icon-btn" title="Emoji"><i class="far fa-smile"></i></button>
+                <button class="icon-btn" title="Attach"><i class="fas fa-paperclip"></i></button>
+                <input type="text" id="message-input" placeholder="Type a message...">
+                <button class="icon-btn send-btn" id="send-btn"><i class="fas fa-paper-plane"></i></button>
+            </footer>
+        </main>
+    </div>
+
+    <!-- Video Call Modal -->
+    <div class="call-modal" id="call-modal">
+        <div class="call-content">
+            <div class="caller-info">
+                <img src="https://ui-avatars.com/api/?name=Alice&background=FF6B6B&color=fff&rounded=true" alt="Alice" class="call-avatar">
+                <h3>Calling Alice Smith...</h3>
+                <p>Ringing</p>
+            </div>
+            <div class="call-actions">
+                <button class="call-btn end-call" id="end-call-btn"><i class="fas fa-phone-slash"></i></button>
+            </div>
+        </div>
+    </div>
+
+    <!-- New Chat Modal -->
+    <div class="call-modal" id="new-chat-modal">
+        <div class="call-content" style="padding: 30px;">
+            <h3 style="margin-bottom: 20px;">Add New Contact</h3>
+            <input type="text" id="new-contact-name" placeholder="Enter contact name..." style="width: 100%; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: var(--text-primary); padding: 12px; border-radius: 12px; outline: none; margin-bottom: 20px;">
+            <div style="display: flex; gap: 10px; justify-content: center;">
+                <button id="cancel-new-chat-btn" style="padding: 10px 20px; border-radius: 8px; border: none; background: rgba(255,255,255,0.1); color: white; cursor: pointer; transition: background 0.2s ease;">Cancel</button>
+                <button id="confirm-new-chat-btn" style="padding: 10px 20px; border-radius: 8px; border: none; background: var(--primary-color); color: white; cursor: pointer; transition: background 0.2s ease;">Add Contact</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
