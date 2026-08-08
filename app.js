@@ -1,182 +1,252 @@
-const mockChats = [
-    { id: 1, name: "Alice Smith", lastMsg: "See you later!", time: "10:45 AM", avatar: "FF6B6B", active: true },
-    { id: 2, name: "Bob Johnson", lastMsg: "Can you send the files?", time: "Yesterday", avatar: "4D96FF" },
-    { id: 3, name: "Design Team", lastMsg: "The new UI looks great.", time: "Tuesday", avatar: "6BCB77" },
-    { id: 4, name: "Mom", lastMsg: "Call me when you're home.", time: "Monday", avatar: "FF9F45" }
-];
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js";
+import { getAuth, RecaptchaVerifier, signInWithPhoneNumber, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js";
+import { getFirestore, collection, addDoc, onSnapshot, query, orderBy, where, serverTimestamp, getDocs, doc, setDoc } from "https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js";
 
-const mockMessages = {
-    1: [
-        { text: "Hey! Are we still on for lunch?", type: "received", time: "10:30 AM" },
-        { text: "Yes, I'll be there in 15 mins.", type: "sent", time: "10:32 AM" },
-        { text: "Awesome. See you later!", type: "received", time: "10:45 AM" }
-    ]
+const firebaseConfig = {
+  apiKey: "AIzaSyD-tJj29vReBh5viE0QKXHfEFe0leTcpgw",
+  authDomain: "clone-hen.firebaseapp.com",
+  projectId: "clone-hen",
+  storageBucket: "clone-hen.firebasestorage.app",
+  messagingSenderId: "1059956276936",
+  appId: "1:1059956276936:web:1ac02fa0c59e5a8d096ffd"
 };
 
-let currentChatId = 1;
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+const db = getFirestore(app);
 
-document.addEventListener('DOMContentLoaded', () => {
-    renderChatList();
-    renderMessages();
-    setupEventListeners();
+// State
+let currentUser = null;
+let currentChatId = null;
+let unsubscribeMessages = null;
+let chatsData = [];
+
+// Elements
+const loginModal = document.getElementById('login-modal');
+const stepPhone = document.getElementById('step-phone');
+const stepOtp = document.getElementById('step-otp');
+const phoneInput = document.getElementById('phone-input');
+const otpInput = document.getElementById('otp-input');
+const sendOtpBtn = document.getElementById('send-otp-btn');
+const verifyOtpBtn = document.getElementById('verify-otp-btn');
+const chatListEl = document.getElementById('chat-list');
+const messagesContainer = document.getElementById('messages-container');
+
+// Auth Listener
+onAuthStateChanged(auth, async (user) => {
+    if (user) {
+        currentUser = user;
+        loginModal.classList.remove('active');
+        document.getElementById('current-chat-name').innerText = "Select a chat";
+        document.querySelector('.user-name').innerText = user.phoneNumber;
+        
+        // Save user to DB
+        await setDoc(doc(db, "users", user.uid), {
+            phoneNumber: user.phoneNumber,
+            lastSeen: serverTimestamp()
+        }, { merge: true });
+        
+        loadChats();
+    } else {
+        loginModal.classList.add('active');
+        setupRecaptcha();
+    }
 });
 
-function renderChatList() {
-    const chatListEl = document.getElementById('chat-list');
-    chatListEl.innerHTML = '';
+// Phone Auth Logic
+function setupRecaptcha() {
+    if(!window.recaptchaVerifier) {
+        window.recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
+            'size': 'normal',
+            'callback': (response) => {
+                // reCAPTCHA solved
+            }
+        });
+    }
+}
 
-    mockChats.forEach(chat => {
+sendOtpBtn.addEventListener('click', () => {
+    const phoneNumber = phoneInput.value.trim();
+    if (!phoneNumber) return alert("Please enter phone number");
+    
+    sendOtpBtn.innerText = "Sending...";
+    signInWithPhoneNumber(auth, phoneNumber, window.recaptchaVerifier)
+    .then((confirmationResult) => {
+        window.confirmationResult = confirmationResult;
+        stepPhone.style.display = 'none';
+        stepOtp.style.display = 'block';
+    }).catch((error) => {
+        console.error("SMS not sent", error);
+        alert("Error: " + error.message);
+        sendOtpBtn.innerText = "Proceed";
+    });
+});
+
+verifyOtpBtn.addEventListener('click', () => {
+    const code = otpInput.value.trim();
+    if (!code) return alert("Please enter OTP");
+    
+    verifyOtpBtn.innerText = "Verifying...";
+    window.confirmationResult.confirm(code).then((result) => {
+        // User signed in successfully (handled by onAuthStateChanged)
+    }).catch((error) => {
+        console.error("Bad verification code", error);
+        alert("Invalid OTP");
+        verifyOtpBtn.innerText = "Verify";
+    });
+});
+
+// Chat Logic
+function loadChats() {
+    const q = query(collection(db, "chats"), where("participants", "array-contains", currentUser.phoneNumber));
+    onSnapshot(q, (snapshot) => {
+        chatsData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        
+        // Sort by latest message time
+        chatsData.sort((a, b) => (b.lastUpdated?.toMillis() || 0) - (a.lastUpdated?.toMillis() || 0));
+        
+        renderChatList();
+    });
+}
+
+function renderChatList() {
+    chatListEl.innerHTML = '';
+    chatsData.forEach(chat => {
+        const otherParticipant = chat.participants.find(p => p !== currentUser.phoneNumber) || currentUser.phoneNumber;
         const item = document.createElement('div');
         item.className = `chat-item ${chat.id === currentChatId ? 'active' : ''}`;
-        item.onclick = () => selectChat(chat.id);
+        item.onclick = () => selectChat(chat.id, otherParticipant);
         
+        let timeString = "";
+        if (chat.lastUpdated) {
+            const d = chat.lastUpdated.toDate();
+            timeString = d.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+        }
+
         item.innerHTML = `
-            <img src="https://ui-avatars.com/api/?name=${chat.name.replace(' ','+')}&background=${chat.avatar}&color=fff&rounded=true" class="avatar" alt="${chat.name}">
+            <img src="https://ui-avatars.com/api/?name=${otherParticipant.replace('+','')}&background=random&color=fff&rounded=true" class="avatar" alt="Avatar">
             <div class="chat-info">
                 <div class="chat-header-row">
-                    <span class="chat-name">${chat.name}</span>
-                    <span class="chat-time">${chat.time}</span>
+                    <span class="chat-name">${otherParticipant}</span>
+                    <span class="chat-time">${timeString}</span>
                 </div>
-                <div class="chat-last-msg">${chat.lastMsg}</div>
+                <div class="chat-last-msg">${chat.lastMessage || 'New Chat'}</div>
             </div>
         `;
         chatListEl.appendChild(item);
     });
 }
 
-function selectChat(id) {
+function selectChat(id, otherParticipantName) {
     currentChatId = id;
     renderChatList();
     
-    // Update Header
-    const chat = mockChats.find(c => c.id === id);
-    if(chat) {
-        document.getElementById('current-chat-name').innerText = chat.name;
-        document.getElementById('current-chat-avatar').src = `https://ui-avatars.com/api/?name=${chat.name.replace(' ','+')}&background=${chat.avatar}&color=fff&rounded=true`;
-    }
-    
-    if(!mockMessages[id]) {
-        mockMessages[id] = [{ text: "Hello there!", type: "received", time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) }];
-    }
-    
-    renderMessages();
+    document.getElementById('current-chat-name').innerText = otherParticipantName;
+    document.getElementById('current-chat-avatar').src = `https://ui-avatars.com/api/?name=${otherParticipantName.replace('+','')}&background=random&color=fff&rounded=true`;
     
     // Switch to chat view on mobile
     document.querySelector('.app-container').classList.add('chat-active');
+    
+    if (unsubscribeMessages) unsubscribeMessages();
+    
+    const q = query(collection(db, `chats/${id}/messages`), orderBy("timestamp"));
+    unsubscribeMessages = onSnapshot(q, (snapshot) => {
+        messagesContainer.innerHTML = '';
+        snapshot.forEach(doc => {
+            const msg = doc.data();
+            const type = msg.sender === currentUser.phoneNumber ? "sent" : "received";
+            const time = msg.timestamp ? msg.timestamp.toDate().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : "";
+            
+            const msgEl = document.createElement('div');
+            msgEl.className = `message ${type}`;
+            msgEl.innerHTML = `${msg.text} <span class="msg-time">${time}</span>`;
+            messagesContainer.appendChild(msgEl);
+        });
+        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+    });
 }
 
-function renderMessages() {
-    const container = document.getElementById('messages-container');
-    container.innerHTML = '';
+// Send Message
+const sendBtn = document.getElementById('send-btn');
+const inputField = document.getElementById('message-input');
+
+async function sendMessage() {
+    const text = inputField.value.trim();
+    if (!text || !currentChatId) return;
     
-    const messages = mockMessages[currentChatId] || [];
+    inputField.value = '';
     
-    messages.forEach(msg => {
-        const msgEl = document.createElement('div');
-        msgEl.className = `message ${msg.type}`;
-        msgEl.innerHTML = `
-            ${msg.text}
-            <span class="msg-time">${msg.time}</span>
-        `;
-        container.appendChild(msgEl);
+    await addDoc(collection(db, `chats/${currentChatId}/messages`), {
+        text: text,
+        sender: currentUser.phoneNumber,
+        timestamp: serverTimestamp()
     });
     
-    container.scrollTop = container.scrollHeight;
+    await setDoc(doc(db, "chats", currentChatId), {
+        lastMessage: text,
+        lastUpdated: serverTimestamp()
+    }, { merge: true });
 }
 
-function setupEventListeners() {
-    const sendBtn = document.getElementById('send-btn');
-    const inputField = document.getElementById('message-input');
-    
-    const sendMessage = () => {
-        const text = inputField.value.trim();
-        if(text !== "") {
-            const time = new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
-            
-            // Add sent message
-            mockMessages[currentChatId].push({ text, type: "sent", time });
-            inputField.value = '';
-            renderMessages();
-            
-            // Update last msg in sidebar
-            const chat = mockChats.find(c => c.id === currentChatId);
-            if(chat) { chat.lastMsg = text; chat.time = time; renderChatList(); }
-            
-            // Simulate auto-reply
-            setTimeout(() => {
-                const replies = ["Got it!", "Sounds good.", "Okay.", "I'll check it out.", "Thanks!"];
-                const reply = replies[Math.floor(Math.random() * replies.length)];
-                mockMessages[currentChatId].push({ text: reply, type: "received", time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) });
-                if(chat) { chat.lastMsg = reply; chat.time = time; renderChatList(); }
-                renderMessages();
-            }, 1500);
-        }
-    };
-    
-    sendBtn.addEventListener('click', sendMessage);
-    inputField.addEventListener('keypress', (e) => {
-        if(e.key === 'Enter') sendMessage();
-    });
+sendBtn.addEventListener('click', sendMessage);
+inputField.addEventListener('keypress', (e) => {
+    if(e.key === 'Enter') sendMessage();
+});
 
-    // Video Call Modal logic
-    const videoBtn = document.getElementById('video-call-btn');
-    const modal = document.getElementById('call-modal');
-    const endCallBtn = document.getElementById('end-call-btn');
+// Mobile Back Button
+const backBtn = document.getElementById('back-btn');
+backBtn.addEventListener('click', () => {
+    document.querySelector('.app-container').classList.remove('chat-active');
+});
 
-    videoBtn.addEventListener('click', () => {
-        modal.classList.add('active');
-        // Play ringtone audio here if we had one
-    });
+// New Chat Button
+const newChatBtn = document.getElementById('new-chat-btn');
+const newChatModal = document.getElementById('new-chat-modal');
+const cancelNewChatBtn = document.getElementById('cancel-new-chat-btn');
+const confirmNewChatBtn = document.getElementById('confirm-new-chat-btn');
+const newContactNameInput = document.getElementById('new-contact-name');
 
-    endCallBtn.addEventListener('click', () => {
-        modal.classList.remove('active');
-    });
+newChatBtn.addEventListener('click', () => {
+    newContactNameInput.placeholder = "Enter exact phone number (e.g. +123456)";
+    newChatModal.classList.add('active');
+    newContactNameInput.focus();
+});
 
-    // New Chat logic
-    const newChatBtn = document.getElementById('new-chat-btn');
-    const newChatModal = document.getElementById('new-chat-modal');
-    const cancelNewChatBtn = document.getElementById('cancel-new-chat-btn');
-    const confirmNewChatBtn = document.getElementById('confirm-new-chat-btn');
-    const newContactNameInput = document.getElementById('new-contact-name');
+cancelNewChatBtn.addEventListener('click', () => {
+    newChatModal.classList.remove('active');
+    newContactNameInput.value = '';
+});
 
-    newChatBtn.addEventListener('click', () => {
-        newChatModal.classList.add('active');
-        newContactNameInput.focus();
-    });
-
-    cancelNewChatBtn.addEventListener('click', () => {
-        newChatModal.classList.remove('active');
-        newContactNameInput.value = '';
-    });
-
-    confirmNewChatBtn.addEventListener('click', () => {
-        const name = newContactNameInput.value.trim();
-        if (name) {
-            const newId = mockChats.length ? Math.max(...mockChats.map(c => c.id)) + 1 : 1;
-            const avatars = ["FF6B6B", "4D96FF", "6BCB77", "FF9F45", "845EC2", "00C9A7", "0D8ABC"];
-            const avatar = avatars[Math.floor(Math.random() * avatars.length)];
-            
-            mockChats.unshift({
-                id: newId,
-                name: name,
-                lastMsg: "New contact added",
-                time: new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}),
-                avatar: avatar,
-                active: true
+confirmNewChatBtn.addEventListener('click', async () => {
+    const phone = newContactNameInput.value.trim();
+    if (phone) {
+        // Check if chat already exists
+        const existingChat = chatsData.find(c => c.participants.includes(phone));
+        if (existingChat) {
+            selectChat(existingChat.id, phone);
+        } else {
+            // Create new chat
+            const newChatRef = await addDoc(collection(db, "chats"), {
+                participants: [currentUser.phoneNumber, phone],
+                lastMessage: "",
+                lastUpdated: serverTimestamp()
             });
-            
-            mockMessages[newId] = [];
-            
-            newContactNameInput.value = '';
-            newChatModal.classList.remove('active');
-            
-            selectChat(newId);
+            selectChat(newChatRef.id, phone);
         }
-    });
+        
+        newContactNameInput.value = '';
+        newChatModal.classList.remove('active');
+    }
+});
 
-    // Mobile back button logic
-    const backBtn = document.getElementById('back-btn');
-    backBtn.addEventListener('click', () => {
-        document.querySelector('.app-container').classList.remove('chat-active');
-    });
-}
+// Video Call modal toggle (mock)
+const videoBtn = document.getElementById('video-call-btn');
+const callModal = document.getElementById('call-modal');
+const endCallBtn = document.getElementById('end-call-btn');
+
+videoBtn.addEventListener('click', () => {
+    callModal.classList.add('active');
+});
+endCallBtn.addEventListener('click', () => {
+    callModal.classList.remove('active');
+});
