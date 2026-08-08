@@ -60,6 +60,9 @@ function selectChat(id) {
     }
     
     renderMessages();
+    
+    // Switch to chat view on mobile
+    document.querySelector('.app-container').classList.add('chat-active');
 }
 
 function renderMessages() {
@@ -169,5 +172,11 @@ function setupEventListeners() {
             
             selectChat(newId);
         }
+    });
+
+    // Mobile back button logic
+    const backBtn = document.getElementById('back-btn');
+    backBtn.addEventListener('click', () => {
+        document.querySelector('.app-container').classList.remove('chat-active');
     });
 }

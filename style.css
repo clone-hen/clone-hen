@@ -371,3 +371,35 @@ header {
 
 .call-btn:hover { transform: scale(1.1); }
 .end-call { background: #E53935; }
+
+/* Responsive Mobile Styles */
+@media (max-width: 768px) {
+    .app-container {
+        width: 100%;
+        height: 100vh;
+        border-radius: 0;
+        border: none;
+    }
+    .sidebar {
+        width: 100%;
+        min-width: 100%;
+    }
+    .chat-area {
+        display: none;
+        width: 100%;
+    }
+    
+    /* When viewing a chat on mobile */
+    .app-container.chat-active .sidebar {
+        display: none;
+    }
+    .app-container.chat-active .chat-area {
+        display: flex;
+    }
+    #back-btn {
+        display: flex !important;
+    }
+    .message {
+        max-width: 85%;
+    }
+}
